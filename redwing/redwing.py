@@ -21,6 +21,7 @@ parser = argparse.ArgumentParser(description="""
         - zero-padded integers?
         - dsn
 """
+parser.add_argument("-t", "--tablename", help="Table name to use in SQL script output.", default="tablename")
 
 args = parser.parse_args()
 
@@ -174,7 +175,7 @@ if __name__ == "__main__":
         buf.write(sql.__str__() + ";\n")
 
     engine = create_engine('postgres://', strategy='mock', executor=dump)
-    table_args = ['mytablename', MetaData()] + d.get_sql_column_types()
+    table_args = [args.tablename, MetaData()] + d.get_sql_column_types()
     t = Table(*table_args)
     table_sql = CreateTable(t).compile(engine)
     print table_sql
