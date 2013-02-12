@@ -29,7 +29,7 @@ args = parser.parse_args()
 # numbers that seem to be zero-padded.
 int_regex = re.compile('^([-1-9](?=[0-9])[\d]*|[0-9])$')
 # numeric includes anything that also includes a decimal
-numeric_regex = re.compile('^((-?0(\.\d*)?)|(-?[1-9]\d*(\.\d*)?))$')
+numeric_regex = re.compile('^((-?0(\.\d*)?)|(-?[1-9\.]\d*(\.\d*)?))$')
 date_regex = re.compile('[\d]{1,2}\/[\d]{1,2}\/[\d]{2,4}')
 
 class DataType(object):
@@ -49,7 +49,7 @@ class IntegerDataType(DataType):
 
 class NumericDataType(DataType):
     def test_type(self, value):
-        return bool(numeric_regex.match(value))
+        return bool(numeric_regex.match(value)) or len(value) == 0
 
     def to_sql(self, data_column):
         return Numeric
