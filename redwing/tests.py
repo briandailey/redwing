@@ -16,6 +16,7 @@ class TestDataTypes(unittest.TestCase):
         self.assertFalse(integer_data_type.test_type('0.1'))
         self.assertFalse(integer_data_type.test_type('5.1'))
         self.assertFalse(integer_data_type.test_type('test'))
+        self.assertFalse(integer_data_type.test_type('00002000'))
 
     def test_numeric_type_check(self):
         numeric_data_type = NumericDataType()
