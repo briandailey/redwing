@@ -1,36 +1,20 @@
-import argparse
 import re
 import csv
 import fileinput
-import unicodedata
-from decimal import Decimal
 from StringIO import StringIO
 from sqlalchemy.schema import CreateTable
 from sqlalchemy import Table, MetaData, Column, create_engine
 from sqlalchemy.types import Integer, Numeric, Date, String, Text
 
-parser = argparse.ArgumentParser(description="""
-    Comfrey is a command line tool to inspect CSV
-    data and attempt some basic type inference.
-""")
-"""
-    TODO: args for
-        - file name
-        - table name
-        - headers?
-        - zero-padded integers?
-        - dsn
-"""
-parser.add_argument("-t", "--tablename", help="Table name to use in SQL script output.", default="tablename")
-
-args = parser.parse_args()
 
 # The int and numeric regex will exclude
 # numbers that seem to be zero-padded.
 int_regex = re.compile('^([-1-9](?=[0-9])[\d]*|[0-9])$')
+
 # numeric includes anything that also includes a decimal
 numeric_regex = re.compile('^((-?0(\.\d*)?)|(-?[1-9\.]\d*(\.\d*)?))$')
 date_regex = re.compile('[\d]{1,2}\/[\d]{1,2}\/[\d]{2,4}')
+
 
 class DataType(object):
     """ Detect a data type and return a SQLAlchemy SQL data type. """
@@ -40,12 +24,14 @@ class DataType(object):
     def to_sql(self):
         raise NotImplemented
 
+
 class IntegerDataType(DataType):
     def test_type(self, value):
         return bool(int_regex.match(value)) or len(value) == 0
 
     def to_sql(self, data_column):
         return Integer
+
 
 class NumericDataType(DataType):
     def test_type(self, value):
@@ -54,6 +40,7 @@ class NumericDataType(DataType):
     def to_sql(self, data_column):
         return Numeric
 
+
 class DateDataType(DataType):
     def test_type(self, value):
         return bool(date_regex.match(value))
@@ -61,12 +48,14 @@ class DateDataType(DataType):
     def to_sql(self, data_column):
         return Date
 
+
 class StringDataType(DataType):
     def test_type(self, value):
         return len(value) < 256
 
     def to_sql(self, data_column):
         return String(data_column.max_length)
+
 
 class TextDataType(DataType):
     """ Default type. Always returns true. """
@@ -76,13 +65,14 @@ class TextDataType(DataType):
     def to_sql(self, data_column):
         return Text
 
+
 # The order here is important.
-typechecks = [IntegerDataType(),
-        NumericDataType(),
-        DateDataType(),
-        StringDataType(),
-        TextDataType(),
-    ]
+DEFAULT_TYPECHECKS = [IntegerDataType(),
+    NumericDataType(),
+    DateDataType(),
+    StringDataType(),
+    TextDataType()]
+
 
 class DataColumn(object):
     name = ''
@@ -99,8 +89,6 @@ class DataColumn(object):
             self.max_length = length
 
     def get_slugified_name(self):
-        """ Cribbed from Django. """
-        # value = unicodedata.normalize('NFKD', unicode(self.name)).encode('ascii', 'ignore').decode('ascii')
         value = self.name
         value = re.sub('[^\w\s-]', '', value).strip().lower()
         return re.sub('[-\s]+', '-', value)
@@ -108,12 +96,13 @@ class DataColumn(object):
 
 class DataScanner(object):
 
-    def __init__(self, typechecks=[], filename=None):
+    def __init__(self, typechecks=DEFAULT_TYPECHECKS, filename=None):
         if filename is None:
             self.reader = csv.reader(fileinput.input())
+        else:
+            self.reader = csv.reader(open(filename, 'r'))
 
         self.typechecks = typechecks
-        # TODO : make sure all typechecks are extensions of TypeCheck
         self.data_columns = []
 
     def scan(self):
@@ -124,7 +113,8 @@ class DataScanner(object):
                 continue
 
             for j, value in enumerate(row):
-                # some data has blank spaces. ignore?
+                # some data has blank spaces. ignore it.
+                # TODO - make this optional.
                 value = value.strip()
 
                 column = self.data_columns[j]
@@ -140,16 +130,12 @@ class DataScanner(object):
                     if is_data_type is None:
                         # has not been tested. test it!
                         if typecheck.test_type(value):
-                            # print "%s, %s is %s" % (column.name, value, data_type)
                             setattr(column, target_attr, True)
                             break
                         else:
-                            if column.name == 'charges':
-                                print "%s, %s is not %s" % (column.name, value, data_type)
                             setattr(column, target_attr, False)
                             continue
-                    elif is_data_type == False:
-                        # print "%s, %s is already disproven as a %s" % (column.name, value, data_type)
+                    elif is_data_type is False:
                         continue
                     else:
                         # was tested, passed before, confirm.
@@ -158,30 +144,24 @@ class DataScanner(object):
 
     def get_sql_column_types(self):
         sql_column_types = []
-        for column in d.data_columns:
+        for column in self.data_columns:
             for typecheck in self.typechecks:
-                if getattr(column, 'is_%s' % typecheck.__class__.__name__, False) == True:
+                if getattr(column, 'is_%s' % typecheck.__class__.__name__, False) is True:
                     # print("%s\t%s\t%s" % (header.name, typecheck.__class__.__name__, header.max_length))
                     sql_column_types.append(Column(column.get_slugified_name(), typecheck.to_sql(column)))
         return sql_column_types
 
+    def get_sql_to_string(self, tablename=None):
+        if tablename is None:
+            tablename = 'tablename'
 
-if __name__ == "__main__":
-    d = DataScanner(typechecks=typechecks)
-    d.scan()
+        buf = StringIO()
 
-    buf = StringIO()
-    def dump(sql, *multiparams, **params):
-        buf.write(sql.__str__() + ";\n")
+        def dump(sql, *multiparams, **params):
+            buf.write(sql.__str__() + ";\n")
 
-    engine = create_engine('postgres://', strategy='mock', executor=dump)
-    table_args = [args.tablename, MetaData()] + d.get_sql_column_types()
-    t = Table(*table_args)
-    table_sql = CreateTable(t).compile(engine)
-    print table_sql
-
-
-"""
-from here:
-    http://stackoverflow.com/questions/2128717/sqlalchemy-printing-raw-sql-from-create
-"""
+        engine = create_engine('postgres://', strategy='mock', executor=dump)
+        table_args = [tablename, MetaData()] + self.get_sql_column_types()
+        t = Table(*table_args)
+        table_sql = CreateTable(t).compile(engine)
+        return table_sql
