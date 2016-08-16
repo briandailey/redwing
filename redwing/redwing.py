@@ -1,7 +1,10 @@
 import re
 import csv
 import fileinput
-from StringIO import StringIO
+try:
+    from io import StringIO
+except ImportError:
+    from StringIO import StringIO
 from sqlalchemy.schema import CreateTable
 from sqlalchemy import Table, MetaData, Column, create_engine
 from sqlalchemy.types import Integer, Numeric, Date, String, Text
